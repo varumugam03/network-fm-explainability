@@ -39,11 +39,11 @@ DESCRIPTIONS = {
 }
 
 # Load data
-print(f"Loading data: {INPUT_DATA_PATH}...")
+print(f"[{RANK}] Loading data: {INPUT_DATA_PATH}...")
 df = pd.read_csv(INPUT_DATA_PATH, low_memory=False)
 
 # Sample indices
-print(f"Sampling {TOTAL_SAMPLES} rows (seed={SEED}) using stratified sampling...")
+print(f"[{RANK}] Sampling {TOTAL_SAMPLES} rows (seed={SEED}) using stratified sampling...")
 labels = df["Label"].unique()
 per_label = TOTAL_SAMPLES // len(labels)
 
@@ -60,27 +60,27 @@ all_sampled_indices = sampled_df.index.to_numpy()
 
 # Split indices across ranks
 sampled_indices = np.array_split(all_sampled_indices, WORLD_SIZE)[RANK]
-print(f"[Rank {RANK}/{WORLD_SIZE}] Processing {len(sampled_indices)}/{len(all_sampled_indices)} samples")
+print(f"[{RANK}] Processing {len(sampled_indices)}/{len(all_sampled_indices)} samples")
 
 # Load checkpoint if exists
 results = {}
 completed_indices = set()
 if CHECKPOINT_PATH.exists():
-    print(f"Loading checkpoint: {CHECKPOINT_PATH}")
+    print(f"[{RANK}] Loading checkpoint: {CHECKPOINT_PATH}")
     checkpoint_df = pd.read_csv(CHECKPOINT_PATH, index_col=0)
     results = checkpoint_df["explanation"].to_dict()
     completed_indices = set(checkpoint_df.index.tolist())
-    print(f"Resuming with {len(completed_indices)} completed samples")
+    print(f"[{RANK}] Resuming with {len(completed_indices)} completed samples")
 
 # Filter remaining
 remaining_indices = [idx for idx in sampled_indices if idx not in completed_indices]
-print(f"Remaining samples: {len(remaining_indices)}")
+print(f"[{RANK}] Remaining samples: {len(remaining_indices)}")
 
 if len(remaining_indices) == 0:
-    print("All samples already processed!")
+    print(f"[{RANK}] All samples already processed!")
 else:
     # Load model
-    print(f"Loading model: {MODEL_ID}...")
+    print(f"[{RANK}] Loading model: {MODEL_ID}...")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, padding_side="left")
     pipe = pipeline(
@@ -94,7 +94,7 @@ else:
     )
 
     # Generate explanations
-    print("Generating explanations...")
+    print(f"[{RANK}] Generating explanations...")
     batch_count = 0
     for i in tqdm(range(0, len(remaining_indices), BATCH_SIZE)):
         batch_indices = remaining_indices[i : i + BATCH_SIZE]
@@ -201,11 +201,11 @@ else:
         if batch_count % SAVE_EVERY == 0:
             results_df = pd.DataFrame.from_dict(results, orient="index", columns=["explanation"])
             results_df.to_csv(CHECKPOINT_PATH)
-            print(f"Checkpoint saved: {len(results_df)} explanations")
+            print(f"[{RANK}] Checkpoint saved: {len(results_df)} explanations")
 
     # Final checkpoint
     results_df = pd.DataFrame.from_dict(results, orient="index", columns=["explanation"])
     results_df.to_csv(CHECKPOINT_PATH)
-    print(f"Checkpoint saved: {len(results_df)} explanations")
+    print(f"[{RANK}] Checkpoint saved: {len(results_df)} explanations")
 
-print(f"[Rank {RANK}] Finished. Checkpoints saved to {CHECKPOINT_DIR}")
+print(f"[{RANK}] Finished. Checkpoints saved to {CHECKPOINT_DIR}")
