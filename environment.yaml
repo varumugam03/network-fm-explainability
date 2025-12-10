@@ -15,6 +15,7 @@ dependencies:
   - scikit-learn
   - matplotlib
   - ipykernel
+  - peft
   - pip:
     - torch
     - torchvision
