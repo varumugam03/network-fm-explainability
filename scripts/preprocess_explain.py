@@ -1,18 +1,16 @@
-import time
 from pathlib import Path
 from textwrap import dedent
 
-import numpy as np
 import pandas as pd
 import torch
 from tqdm.auto import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+from transformers import AutoTokenizer, pipeline
 
 MODEL_ID = "Qwen/Qwen2.5-32B-Instruct"
 DATA_ROOT = Path("data/cic-ids2018/processed/")
 INPUT_DATA_PATH = DATA_ROOT / "cleaned.csv"
 OUTPUT_DATA_PATH = DATA_ROOT / "explained.csv"
-BATCH_SIZE = 4
+BATCH_SIZE = 32
 
 
 def generate_prompt(row):
@@ -46,7 +44,7 @@ def generate_prompt(row):
         {desc}
 
         ### INSTRUCTIONS
-        Only use the flow features and values below to construct your explanation. Do NOT reference IPs, timestamps, or any external knowledge. Justify the label using only flow-level behavioral characteristics.
+        Only use the flow features and values below to construct your explanation. Do NOT reference any external knowledge in your explanation. Justify the label using only flow-level behavioral characteristics.
 
         ### Flow Features
         - Dst Port: {row['Dst Port']}
@@ -75,7 +73,7 @@ def generate_prompt(row):
         - Subflow Fwd Pkts: {row['Subflow Fwd Pkts']}
 
         ### Your Task
-        Based on these features alone, write a BRIEF explanation of why this flow is consistent with a {fine_label} attack. Make sure your response includes which features specifically lead you to believe that it is the said attack, focusing on only the most indicitave features. Respond ONLY with the explanation, without any additional commentary or preamble.
+        Based on these features alone, write a BRIEF explanation of why this flow is consistent with a {label} attack. Make sure your response includes which features specifically lead you to believe that it is the said attack, focusing on only the most indicitave features. Respond ONLY with the explanation, without any additional commentary or preamble.
         """
     )
 
@@ -90,30 +88,19 @@ print(f"Original shape: {df.shape}")
 attack_df = df[df["Label"] != "Benign"].copy()
 print(f"Attack samples only: {attack_df.shape}")
 
-
 print(f"Loading model: {MODEL_ID}...")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, padding_side="left")
-pipe = pipeline("text-generation", model=MODEL_ID, tokenizer=tokenizer, batch_size=BATCH_SIZE, device=device)
-
-print("\n--- Estimating Generation Time ---")
-test_samples = attack_df.head(100).copy()
-start_test = time.time()
-
-for idx, row in test_samples.iterrows():
-    prompt = generate_prompt(row)
-    # Generate with constraints to speed up
-    _ = pipe(prompt, max_new_tokens=1000, do_sample=False, truncation=True)
-
-end_test = time.time()
-avg_time_per_sample = (end_test - start_test) / len(test_samples)
-total_samples = len(attack_df)
-estimated_total_seconds = total_samples * avg_time_per_sample
-estimated_total_hours = estimated_total_seconds / 3600
-print(f"Average time per sample: {avg_time_per_sample:.2f} seconds")
-print(f"Estimated total generation time for {total_samples} samples: {estimated_total_hours:.2f} hours")
-
+pipe = pipeline(
+    "text-generation",
+    model=MODEL_ID,
+    tokenizer=tokenizer,
+    batch_size=BATCH_SIZE,
+    device=device,
+    dtype=torch.bfloat16,
+    model_kwargs={"attn_implementation": "flash_attention_2"},
+)
 
 # Generation Loop
 print(f"\nStarting generation for {len(attack_df)} samples...")
@@ -141,7 +128,4 @@ for i in tqdm(range(0, len(prompts), BATCH_SIZE)):
         explanation = out[0]["generated_text"].strip()
         explanations.append(explanation)
 
-# Join explanations back to original dataframe (df, with nulls for benigns)
-attack_df = attack_df.reset_index(drop=True)
-attack_df["Explanation"] = explanations
-final_df = df.merge(attack_df[["Explanation"]], left_index=True, right_index=True, how="left")
+print(explanations)
