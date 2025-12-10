@@ -1,6 +1,8 @@
+import os
 from pathlib import Path
 from textwrap import dedent
 
+import numpy as np
 import pandas as pd
 import torch
 from tqdm.auto import tqdm
@@ -11,11 +13,17 @@ MODEL_ID = "Qwen/Qwen2.5-32B-Instruct"
 DATA_ROOT = Path("data/cic-ids2018/processed/")
 INPUT_DATA_PATH = DATA_ROOT / "cleaned.csv"
 OUTPUT_DATA_PATH = DATA_ROOT / "explained.csv"
-CHECKPOINT_PATH = DATA_ROOT / "explained_checkpoint.csv"
-BATCH_SIZE = 64
-TOTAL_SAMPLES = 256
-SAVE_EVERY = 2
+BATCH_SIZE = 32
+TOTAL_SAMPLES = 64
+SAVE_EVERY = 1
 SEED = 42
+
+# Distributed settings (SLURM)
+RANK = int(os.environ.get("SLURM_PROCID", 0))
+WORLD_SIZE = int(os.environ.get("SLURM_NTASKS", 1))
+CHECKPOINT_DIR = DATA_ROOT / "checkpoints"
+CHECKPOINT_DIR.mkdir(exist_ok=True)
+CHECKPOINT_PATH = CHECKPOINT_DIR / f"rank{RANK}.csv"
 
 DESCRIPTIONS = {
     "Benign": "Normal activity in a typical corporate network, such as file transfers, browsing, or background services.",
@@ -48,8 +56,11 @@ for lbl in labels:
     sampled_parts.append(part)
 
 sampled_df = pd.concat(sampled_parts)
-sampled_indices = sampled_df.index.to_numpy()
-print(f"Total samples to process: {len(sampled_indices)}")
+all_sampled_indices = sampled_df.index.to_numpy()
+
+# Split indices across ranks
+sampled_indices = np.array_split(all_sampled_indices, WORLD_SIZE)[RANK]
+print(f"[Rank {RANK}/{WORLD_SIZE}] Processing {len(sampled_indices)}/{len(all_sampled_indices)} samples")
 
 # Load checkpoint if exists
 results = {}
@@ -94,7 +105,6 @@ else:
             label = row["Label"]
             fine_label = row["Fine Label"]
             desc = DESCRIPTIONS.get(fine_label, "No description available.")
-
             prompt = dedent(
                 f"""
                 You are a cybersecurity analyst. Your task is to explain why the following network flow from the CIC-IDS2018 dataset is labeled as a {label} attack.
@@ -105,33 +115,70 @@ else:
 
                 ### Flow Features
                 - Dst Port: {row['Dst Port']}
+                - Protocol: {row['Protocol']}
                 - Flow Duration: {row['Flow Duration']}
+
                 - Tot Fwd Pkts: {row['Tot Fwd Pkts']}
+                - Tot Bwd Pkts: {row['Tot Bwd Pkts']}
                 - TotLen Fwd Pkts: {row['TotLen Fwd Pkts']}
+                - TotLen Bwd Pkts: {row['TotLen Bwd Pkts']}
+                - Down/Up Ratio: {row['Down/Up Ratio']}
+
                 - Fwd Pkt Len Max: {row['Fwd Pkt Len Max']}
+                - Fwd Pkt Len Min: {row['Fwd Pkt Len Min']}
                 - Fwd Pkt Len Mean: {row['Fwd Pkt Len Mean']}
-                - Fwd IAT Tot: {row['Fwd IAT Tot']}
-                - Fwd IAT Mean: {row['Fwd IAT Mean']}
-                - Fwd IAT Max: {row['Fwd IAT Max']}
-                - Fwd IAT Min: {row['Fwd IAT Min']}
-                - Flow IAT Min: {row['Flow IAT Min']}
-                - Flow IAT Max: {row['Flow IAT Max']}
-                - Flow IAT Mean: {row['Flow IAT Mean']}
-                - Fwd Seg Size Min: {row['Fwd Seg Size Min']}
-                - Fwd Seg Size Avg: {row['Fwd Seg Size Avg']}
+                - Fwd Pkt Len Std: {row['Fwd Pkt Len Std']}
+                - Bwd Pkt Len Max: {row['Bwd Pkt Len Max']}
+                - Bwd Pkt Len Min: {row['Bwd Pkt Len Min']}
+                - Bwd Pkt Len Mean: {row['Bwd Pkt Len Mean']}
+                - Bwd Pkt Len Std: {row['Bwd Pkt Len Std']}
+
+                - Pkt Len Max: {row['Pkt Len Max']}
+                - Pkt Len Min: {row['Pkt Len Min']}
+                - Pkt Len Mean: {row['Pkt Len Mean']}
+                - Pkt Len Std: {row['Pkt Len Std']}
+                - Pkt Size Avg: {row['Pkt Size Avg']}
+
+                - Flow Byts/s: {row['Flow Byts/s']}
                 - Flow Pkts/s: {row['Flow Pkts/s']}
                 - Fwd Pkts/s: {row['Fwd Pkts/s']}
                 - Bwd Pkts/s: {row['Bwd Pkts/s']}
+
+                - Flow IAT Mean: {row['Flow IAT Mean']}
+                - Flow IAT Max: {row['Flow IAT Max']}
+                - Flow IAT Min: {row['Flow IAT Min']}
+                - Fwd IAT Mean: {row['Fwd IAT Mean']}
+                - Fwd IAT Max: {row['Fwd IAT Max']}
+                - Fwd IAT Min: {row['Fwd IAT Min']}
+                - Bwd IAT Mean: {row['Bwd IAT Mean']}
+                - Bwd IAT Max: {row['Bwd IAT Max']}
+                - Bwd IAT Min: {row['Bwd IAT Min']}
+
+                - SYN Flag Cnt: {row['SYN Flag Cnt']}
+                - ACK Flag Cnt: {row['ACK Flag Cnt']}
+                - RST Flag Cnt: {row['RST Flag Cnt']}
+                - PSH Flag Cnt: {row['PSH Flag Cnt']}
+
                 - Fwd Header Len: {row['Fwd Header Len']}
+                - Bwd Header Len: {row['Bwd Header Len']}
+
                 - Init Fwd Win Byts: {row['Init Fwd Win Byts']}
                 - Init Bwd Win Byts: {row['Init Bwd Win Byts']}
-                - Pkt Len Max: {row['Pkt Len Max']}
-                - Subflow Fwd Byts: {row['Subflow Fwd Byts']}
-                - Subflow Fwd Pkts: {row['Subflow Fwd Pkts']}
+                - Fwd Act Data Pkts: {row['Fwd Act Data Pkts']}
+
+                - Active Mean: {row['Active Mean']}
+                - Idle Mean: {row['Idle Mean']}
 
                 ### INSTRUCTIONS
-                Using the flow features construct a concise (2-3 sentences) explanation of why this flow is consistent with a {label} attack. Do NOT include any of the ground truth information in the explanation itself, using it only for added context. Make sure your response includes which features specifically lead you to believe that it is the said attack, focusing on only the most indicitave features. Respond ONLY with the explanation, without any additional commentary or preamble.
-                """
+                Using the flow features, construct a concise (2-3 sentence) explanation of why this flow is consistent with a {label} attack. 
+                Do NOT include any of the ground truth information in the explanation itself.
+
+                Focus on *qualitative interpretation* of the features rather than repeating numerical values. 
+                Describe behaviors using comparative terms such as “low,” “high,” “balanced,” “normal,” “burst-like,” or “intermittent,” and explain how these patterns align with the expected behavior of a {label} attack.
+                Highlight only the most indicative features and explain the overall traffic pattern they suggest.
+
+                Respond ONLY with the explanation, without any additional commentary or preamble.
+            """
             )
             batch_prompts.append(prompt)
 
@@ -161,13 +208,4 @@ else:
     results_df.to_csv(CHECKPOINT_PATH)
     print(f"Checkpoint saved: {len(results_df)} explanations")
 
-# Join to original dataframe and save
-print("Saving final output...")
-df["explanation"] = None
-for idx, explanation in results.items():
-    df.loc[idx, "explanation"] = explanation
-
-df.to_csv(OUTPUT_DATA_PATH, index=False)
-print(f"Saved to {OUTPUT_DATA_PATH}")
-print(f"  - Total rows: {len(df)}")
-print(f"  - Rows with explanations: {df['explanation'].notna().sum()}")
+print(f"[Rank {RANK}] Finished. Checkpoints saved to {CHECKPOINT_DIR}")
