@@ -10,7 +10,7 @@ MODEL_ID = "Qwen/Qwen2.5-32B-Instruct"
 DATA_ROOT = Path("data/cic-ids2018/processed/")
 INPUT_DATA_PATH = DATA_ROOT / "cleaned.csv"
 OUTPUT_DATA_PATH = DATA_ROOT / "explained.csv"
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 
 
 def generate_prompt(row):
