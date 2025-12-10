@@ -183,7 +183,7 @@ else:
                 Respond ONLY with the explanation, without any additional commentary, preamble, notes, or clarifications.
             """
             )
-            batch_prompts.append({"role": "user", "content": prompt})
+            batch_prompts.append([{"role": "user", "content": prompt}])
 
         # Generate
         outputs = pipe(
@@ -196,7 +196,7 @@ else:
         )
 
         for idx, out in zip(batch_indices, outputs):
-            results[idx] = out["generated_text"].strip()
+            results[idx] = out[0]["generated_text"].strip()
 
         batch_count += 1
 
