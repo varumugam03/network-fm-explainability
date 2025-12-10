@@ -12,6 +12,9 @@ from models import MLP
 from utils.misc import set_random_seed
 from utils.processor import train
 
+
+LLM_EMBEDDING_DIM = 5120 # Qwen2.5-32B hidden size. Use 4096 for Llama-7B/Qwen-7B.
+
 DATA_ROOT = Path("data/cic-ids2018/processed/")
 RUN_NAME = "cic-ids2018"
 EPOCHS = 50
@@ -33,7 +36,12 @@ train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, num_workers=NUM_
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, shuffle=False)
 
 # Create the model & optimizer
-model = MLP(input_dim=train_dataset.num_features, hidden_dims=[768, 768], output_dim=train_dataset.num_classes).to(DEVICE)
+model = MLP(
+    input_dim=train_dataset.num_features, 
+    hidden_dims=[768, 768], 
+    output_dim=train_dataset.num_classes,
+    token_dim=LLM_EMBEDDING_DIM # <--- Added this
+).to(DEVICE)
 
 optimizer = optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
 
