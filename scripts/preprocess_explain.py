@@ -14,8 +14,8 @@ DATA_ROOT = Path("data/cic-ids2018/processed/")
 INPUT_DATA_PATH = DATA_ROOT / "cleaned.csv"
 OUTPUT_DATA_PATH = DATA_ROOT / "explained.csv"
 BATCH_SIZE = 32
-TOTAL_SAMPLES = 64
-SAVE_EVERY = 1
+TOTAL_SAMPLES = 1000
+SAVE_EVERY = 25
 SEED = 42
 
 # Distributed settings (SLURM)
@@ -24,6 +24,9 @@ WORLD_SIZE = int(os.environ.get("SLURM_NTASKS", 1))
 CHECKPOINT_DIR = DATA_ROOT / "checkpoints"
 CHECKPOINT_DIR.mkdir(exist_ok=True)
 CHECKPOINT_PATH = CHECKPOINT_DIR / f"rank{RANK}.csv"
+
+if RANK == 0:
+    print(f"World Size: {WORLD_SIZE}")
 
 DESCRIPTIONS = {
     "Benign": "Normal activity in a typical corporate network, such as file transfers, browsing, or background services.",
@@ -177,10 +180,10 @@ else:
                 Describe behaviors using comparative terms such as “low,” “high,” “balanced,” “normal,” “burst-like,” or “intermittent,” and explain how these patterns align with the expected behavior of a {label} attack.
                 Highlight only the most indicative features and explain the overall traffic pattern they suggest.
 
-                Respond ONLY with the explanation, without any additional commentary or preamble.
+                Respond ONLY with the explanation, without any additional commentary, preamble, notes, or clarifications.
             """
             )
-            batch_prompts.append(prompt)
+            batch_prompts.append({"role": "user", "content": prompt})
 
         # Generate
         outputs = pipe(
@@ -193,7 +196,7 @@ else:
         )
 
         for idx, out in zip(batch_indices, outputs):
-            results[idx] = out[0]["generated_text"].strip()
+            results[idx] = out["generated_text"].strip()
 
         batch_count += 1
 
