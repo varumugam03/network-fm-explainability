@@ -1,0 +1,21 @@
+name: network
+channels:
+  - conda-forge
+  - pytorch
+  - nvidia  
+dependencies:
+  - python==3.10
+  - pip
+  - transformers
+  - cuda-toolkit=12.4
+  - wandb
+  - tqdm
+  - numpy
+  - pandas
+  - scikit-learn
+  - matplotlib
+  - ipykernel
+  - pip:
+    - torch
+    - torchvision
+    - --index-url https://download.pytorch.org/whl/cu124
