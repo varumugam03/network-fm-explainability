@@ -9,7 +9,6 @@ LABELS = [
     "DoS",
     "DDoS",
     "Bot",
-    "Web",
     "Infiltration",
 ]
 
