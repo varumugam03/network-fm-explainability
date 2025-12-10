@@ -8,11 +8,11 @@ import torch
 from tqdm.auto import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
-MODEL_ID = "microsoft/Phi-3-mini-4k-instruct"
+MODEL_ID = "Qwen/Qwen2.5-32B-Instruct"
 DATA_ROOT = Path("data/cic-ids2018/processed/")
 INPUT_DATA_PATH = DATA_ROOT / "cleaned.csv"
 OUTPUT_DATA_PATH = DATA_ROOT / "explained.csv"
-BATCH_SIZE = 16
+BATCH_SIZE = 4
 
 
 def generate_prompt(row):
@@ -75,7 +75,7 @@ def generate_prompt(row):
         - Subflow Fwd Pkts: {row['Subflow Fwd Pkts']}
 
         ### Your Task
-        Based on these features alone, write a BRIEF explanation of why this flow is consistent with a {fine_label} attack. Make sure your response includes which features specifically lead you to believe that it is the said attack or not. Respond ONLY with the explanation, without any additional commentary or preamble.
+        Based on these features alone, write a BRIEF explanation of why this flow is consistent with a {fine_label} attack. Make sure your response includes which features specifically lead you to believe that it is the said attack, focusing on only the most indicitave features. Respond ONLY with the explanation, without any additional commentary or preamble.
         """
     )
 
@@ -93,9 +93,9 @@ print(f"Attack samples only: {attack_df.shape}")
 
 print(f"Loading model: {MODEL_ID}...")
 device = "cuda" if torch.cuda.is_available() else "cpu"
-dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
-pipe = pipeline("text-generation", model=MODEL_ID, device=device, torch_dtype=dtype)
+tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, padding_side="left")
+pipe = pipeline("text-generation", model=MODEL_ID, tokenizer=tokenizer, batch_size=BATCH_SIZE, device=device)
 
 print("\n--- Estimating Generation Time ---")
 test_samples = attack_df.head(100).copy()
@@ -107,10 +107,12 @@ for idx, row in test_samples.iterrows():
     _ = pipe(prompt, max_new_tokens=1000, do_sample=False, truncation=True)
 
 end_test = time.time()
-avg_time_per_sample = (end_test - start_test) / 100
+avg_time_per_sample = (end_test - start_test) / len(test_samples)
 total_samples = len(attack_df)
 estimated_total_seconds = total_samples * avg_time_per_sample
 estimated_total_hours = estimated_total_seconds / 3600
+print(f"Average time per sample: {avg_time_per_sample:.2f} seconds")
+print(f"Estimated total generation time for {total_samples} samples: {estimated_total_hours:.2f} hours")
 
 
 # Generation Loop
@@ -129,10 +131,8 @@ for i in tqdm(range(0, len(prompts), BATCH_SIZE)):
     outputs = pipe(
         batch_prompts,
         batch_size=BATCH_SIZE,
-        max_new_tokens=128,
+        max_new_tokens=1000,
         do_sample=True,
-        temperature=0.7,
-        top_p=0.9,
         truncation=True,
         return_full_text=False,
     )
