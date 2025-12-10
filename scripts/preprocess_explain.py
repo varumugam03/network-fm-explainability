@@ -11,10 +11,10 @@ MODEL_ID = "Qwen/Qwen2.5-32B-Instruct"
 DATA_ROOT = Path("data/cic-ids2018/processed/")
 INPUT_DATA_PATH = DATA_ROOT / "cleaned.csv"
 OUTPUT_DATA_PATH = DATA_ROOT / "explained.csv"
-CHECKPOINT_PATH = DATA_ROOT / "explanations_checkpoint.csv"
+CHECKPOINT_PATH = DATA_ROOT / "explained_checkpoint.csv"
 BATCH_SIZE = 64
-TOTAL_SAMPLES = 100000
-SAVE_EVERY = 5
+TOTAL_SAMPLES = 256
+SAVE_EVERY = 2
 SEED = 42
 
 DESCRIPTIONS = {
@@ -35,11 +35,21 @@ print(f"Loading data: {INPUT_DATA_PATH}...")
 df = pd.read_csv(INPUT_DATA_PATH, low_memory=False)
 
 # Sample indices
-print(f"Sampling {TOTAL_SAMPLES} rows (seed={SEED})...")
-n_samples = min(TOTAL_SAMPLES, len(df))
-sampled_df = df.sample(n=n_samples, random_state=SEED)
-sample_indices = sampled_df.index.to_numpy()
-print(f"Total samples to process: {len(sample_indices)}")
+print(f"Sampling {TOTAL_SAMPLES} rows (seed={SEED}) using stratified sampling...")
+labels = df["Label"].unique()
+per_label = TOTAL_SAMPLES // len(labels)
+
+sampled_parts = []
+for lbl in labels:
+    part = df[df["Label"] == lbl].sample(
+        n=min(per_label, len(df[df["Label"] == lbl])),
+        random_state=SEED,
+    )
+    sampled_parts.append(part)
+
+sampled_df = pd.concat(sampled_parts)
+sampled_indices = sampled_df.index.to_numpy()
+print(f"Total samples to process: {len(sampled_indices)}")
 
 # Load checkpoint if exists
 results = {}
@@ -52,7 +62,7 @@ if CHECKPOINT_PATH.exists():
     print(f"Resuming with {len(completed_indices)} completed samples")
 
 # Filter remaining
-remaining_indices = [idx for idx in sample_indices if idx not in completed_indices]
+remaining_indices = [idx for idx in sampled_indices if idx not in completed_indices]
 print(f"Remaining samples: {len(remaining_indices)}")
 
 if len(remaining_indices) == 0:
