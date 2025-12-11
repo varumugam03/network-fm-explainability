@@ -44,6 +44,7 @@ DESCRIPTIONS = {
 # Load data
 print(f"[{RANK}] Loading data: {INPUT_DATA_PATH}...")
 df = pd.read_csv(INPUT_DATA_PATH, low_memory=False)
+protocol_cols = [col for col in df.columns if col.startswith("Protocol_")]
 
 # Sample indices
 print(f"[{RANK}] Sampling {TOTAL_SAMPLES} rows (seed={SEED}) using stratified sampling...")
@@ -118,7 +119,7 @@ else:
 
                 ### Flow Features
                 - Dst Port: {row['Dst Port']}
-                - Protocol: {row['Protocol']}
+                - Protocol: {row[protocol_cols].idxmax().split("_")[1]}
                 - Flow Duration: {row['Flow Duration']}
 
                 - Tot Fwd Pkts: {row['Tot Fwd Pkts']}

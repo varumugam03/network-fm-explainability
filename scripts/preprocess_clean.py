@@ -37,6 +37,11 @@ if len(cols_to_drop) > 0:
 feature_cols = [c for c in df.columns if c not in ["Label"]]
 df[feature_cols] = df[feature_cols].apply(pd.to_numeric, errors="coerce")
 
+# One-hot encode categorical features
+df["Protocol"] = df["Protocol"].astype(int)
+df = pd.get_dummies(df, columns=["Protocol"], dtype=int)
+df
+
 # Remove rows with inf/-inf/NaN values
 print("Removing rows with inf/-inf/NaN values...")
 df = df.replace([np.inf, -np.inf], np.nan)
@@ -63,6 +68,11 @@ label_mapping = {
 
 df["Label"] = df["Fine Label"].map(label_mapping)
 df.dropna(subset=["Label"], inplace=True)
+
+# Split into a train and validation set
+train_indices, val_indices = train_test_split(df.index, test_size=0.2, random_state=42)
+df["Split"] = "train"
+df.loc[val_indices, "Split"] = "val"
 
 processed_dir = data_dir / "processed"
 processed_dir.mkdir(exist_ok=True)
