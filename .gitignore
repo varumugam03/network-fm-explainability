@@ -1,0 +1,5 @@
+*.pyc
+
+weights/
+data/
+logs/
